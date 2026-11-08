@@ -1,0 +1,32 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>CloudCost Guard</title>
+<style>:root{--bg:#f5f7fb;--c:#fff;--t:#111827;--m:#6b7280;--a:#2563eb;--r:#dc2626;--g:#16a34a;--b:#e5e7eb}
+@media(prefers-color-scheme:dark){:root{--bg:#0b1020;--c:#151b30;--t:#e8ecf8;--m:#93a0c0;--a:#60a5fa;--r:#f87171;--g:#4ade80;--b:#27304f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t);font:15px/1.5 system-ui,sans-serif}.w{max-width:980px;margin:auto;padding:16px}
+.c{background:var(--c);border:1px solid var(--b);border-radius:12px;padding:14px;margin-bottom:12px}.g{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+input,select,button{font:inherit;padding:8px;border-radius:8px;border:1px solid var(--b);background:var(--bg);color:var(--t)}button{background:var(--a);color:#fff;border:0;cursor:pointer}
+.x{background:none;color:var(--r);padding:2px 8px}.big{font-size:26px;font-weight:700}.m{color:var(--m);font-size:13px}.bar{height:7px;background:var(--b);border-radius:5px;margin:3px 0 9px}.bar i{display:block;height:100%;background:var(--a);border-radius:5px}
+.f{display:flex;gap:6px;flex-wrap:wrap}.f>*{flex:1;min-width:110px}table{width:100%;border-collapse:collapse}td{padding:6px 4px;border-bottom:1px solid var(--b)}.s{overflow-x:auto}</style></head><body><div class="w">
+<h2 style="margin:6px 0">Cloud<span style="color:var(--a)">Cost</span> Guard</h2><div class="m">Rupee-accurate cloud spend, forecast and alerts.</div>
+<div class="c f" style="margin-top:10px"><input id="key" type="password" placeholder="API key"><button id="ok">Connect</button><input id="bud" type="number" placeholder="Monthly budget ₹"><button id="sb">Set budget</button></div>
+<div id="err" class="m" style="color:var(--r)"></div>
+<div class="g" id="kp"></div>
+<div class="c" id="al" style="margin-top:12px"></div>
+<div class="c"><b>Log spend</b><div class="f" style="margin-top:8px"><input id="day" type="date"><select id="pv"><option>AWS</option><option>Azure</option><option>GCP</option><option>Oracle</option><option>Cloudflare</option><option>Other</option></select><input id="sv" placeholder="Service (EC2, S3…)"><input id="tm" placeholder="Team"><input id="am" type="number" placeholder="Amount"><select id="cu"><option>USD</option><option>INR</option><option>EUR</option></select><label class="m" style="align-self:center"><input type="checkbox" id="gs" style="min-width:0"> +18% GST</label><button id="add">Add</button></div></div>
+<div class="g"><div class="c"><b>By provider (this month)</b><div id="bp" style="margin-top:8px"></div></div><div class="c"><b>By team (this month)</b><div id="bt" style="margin-top:8px"></div></div></div>
+<div class="c s"><b>Recent entries</b><table id="tb"></table></div></div>
+<script>
+const $=i=>document.getElementById(i),R=n=>'₹'+Math.round(n).toLocaleString('en-IN');let K=sessionStorage.getItem('k')||'';$('key').value=K;$('day').valueAsDate=new Date();
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function api(p,m='GET',b){const r=await fetch('/api/'+p,{method:m,headers:{'x-api-key':K,'content-type':'application/json'},body:b?JSON.stringify(b):undefined});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');return d}
+const bars=(a)=>{const mx=Math.max(1,...a.map(x=>x.t));return a.map(x=>`<div class="m" style="display:flex;justify-content:space-between"><span>${esc(x.k)}</span><span>${R(x.t)}</span></div><div class="bar"><i style="width:${x.t/mx*100}%"></i></div>`).join('')||'<div class="m">No data this month.</div>'};
+async function load(){try{$('err').textContent='';const s=await api('summary'),e=await api('spend');
+$('kp').innerHTML=[['Spent this month',R(s.mtd)],['Forecast (month-end)',R(s.forecast)],['Budget used',s.pct.toFixed(0)+'% of '+R(s.budget)]].map(([a,b],i)=>`<div class="c"><div class="m">${a}</div><div class="big" style="${i==1&&s.willBreach?'color:var(--r)':''}">${b}</div></div>`).join('');
+$('al').innerHTML=(s.willBreach?'<div style="color:var(--r)">⚠ Forecast exceeds your budget by '+R(s.forecast-s.budget)+'.</div>':'<div style="color:var(--g)">✔ On track to stay within budget.</div>')+(s.anomalies.length?s.anomalies.map(a=>`<div>🔺 ${a.day}: ${R(a.inr)} (${a.x}× normal daily spend)</div>`).join(''):'<div class="m">No unusual spikes in the last 30 days.</div>');
+$('bp').innerHTML=bars(s.byProvider);$('bt').innerHTML=bars(s.byTeam);
+$('tb').innerHTML=e.map(r=>`<tr><td>${r.day}</td><td>${esc(r.provider)} ${esc(r.service)}</td><td>${esc(r.team)}</td><td>${r.currency} ${r.amount}</td><td><b>${R(r.inr)}</b></td><td><button class="x" data-d="${r.id}">✕</button></td></tr>`).join('')||'<tr><td class="m">No entries yet.</td></tr>';
+document.querySelectorAll('[data-d]').forEach(b=>b.onclick=async()=>{await api('spend/'+b.dataset.d,'DELETE');load()})}catch(x){$('err').textContent=x.message}}
+$('ok').onclick=()=>{K=$('key').value;sessionStorage.setItem('k',K);load()};
+$('sb').onclick=async()=>{try{await api('budget','PUT',{budget:$('bud').value});load()}catch(x){$('err').textContent=x.message}};
+$('add').onclick=async()=>{try{await api('spend','POST',{day:$('day').value,provider:$('pv').value,service:$('sv').value,team:$('tm').value,amount:$('am').value,currency:$('cu').value,gst:$('gs').checked});$('am').value='';load()}catch(x){$('err').textContent=x.message}};
+if(K)load();
+</script></body></html>
